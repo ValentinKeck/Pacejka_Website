@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>Pacejka Base</title>
+        <style>
+            canvas {
+            border: 1px solid #333;
+            }
+
+            #inputForm {
+                margin-bottom: 20px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                font-family: sans-serif;
+                font-size: 16px;
+            }
+            #inputForm label {
+                display: flex;
+                flex-direction: column;
+                font-weight: bold;
+            }
+            #inputForm input {
+                padding: 6px 8px;
+                font-size: 16px;
+                border: 1px solid #aaa;
+                border-radius: 5px;
+                width: 80px;
+            }
+
+            #drawBtn {
+                padding: 15px 30px;
+                font-size: 18px;
+                font-weight: bold;
+                background-color: #007bff;
+                color: white;
+                border: none;
+                border-radius: 10px;
+                cursor: pointer;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+                transition: background-color 0.3s ease, transform 0.2s ease;
+                margin-top: 20px;
+            }
+            #drawBtn:hover {
+                background-color: #0056b3;
+                transform: scale(1.05);
+            }
+
+            #drawBtn:active {
+                transform: scale(0.97);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            }
+        </style>
+    </head>
+    <body>
+
+        <canvas id="graphCanvas" width="600" height="400"></canvas>
+        <button id="drawBtn" onclick="handleDrawClick()">
+            Reifen zeichnen
+        </button>
+
+        <div id="inputForm">
+            <label>B: <input type="number" id="inputB" value="12" step="0.1"></label>
+            <label>C: <input type="number" id="inputC" value="1.3" step="0.1"></label>
+            <label>E: <input type="number" id="inputE" value="0.97" step="0.01"></label>
+            <label>µ: <input type="number" id="inputMu" value="1" step="0.05"></label>
+            <label>Fz [N]: <input type="number" id="inputFz" value="3000" step="100"></label>
+        </div>
+
+        <script>
+
+            class Tire {
+                constructor() {
+                    this.x = [],
+                    this.y = [],
+                    this.mu = 0
+                }
+            }
+
+            const angle = 15 / 180 * Math.PI;
+            let reifenKurven = []; // ein leeres Array für mehrere Reifen
+
+            function pacejkaLateralForce(alphaRad, B, C, D, E) {
+
+                const term = B * alphaRad - E * (B * alphaRad - Math.atan(B * alphaRad));
+                return D * Math.sin(C * Math.atan(term));
+            }
+            
+            function createLateralPacejka(mu, Fz, B, C, E){
+
+                const tire = new Tire();
+                tire.mu = mu;
+
+                let j = 0;
+
+                for (let i = -angle; i <= angle; i+=0.01) {
+
+                    tire.x[j] = i;
+                    tire.y[j] = pacejkaLateralForce(i, B, C, mu * Fz, E);
+
+                    j++;
+                }
+
+                return tire;
+            }
+
+            const canvas = document.getElementById('graphCanvas');
+            const ctx = canvas.getContext('2d');
+
+            const yPadding = 40;
+            const xPadding = 100;
+            const width = canvas.width - xPadding;
+            const height = canvas.height - yPadding;
+
+            // Hilfsfunktion zum Skalieren der Daten
+            function getScale(values, maxPixelSize) {
+                const maxValue = Math.max(...values);
+                return maxPixelSize / maxValue;
+            }
+
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(1, -1); // Y-Achse invertieren
+
+            // Achsen zeichnen
+            ctx.save();
+            ctx.scale(1, -1);
+            ctx.beginPath();
+            ctx.moveTo(-width / 2, 0);
+            ctx.lineTo(width / 2, 0); // x-Achse
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(0, -height /2); // y-Achse
+            ctx.strokeStyle = "#555";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+
+            const yMax = 4500;
+            const yScale = height / (2 * yMax); // Skaliert von -5000 bis +5000
+
+            const tire = createLateralPacejka(1, 3000, B, C, E);
+
+            function drawTire(tire, options = {}) {
+                // Standardwerte definieren
+                const {
+                    color = "blue",
+                    lineWidth = 2
+                } = options;
+
+                // Skaliere die x- und y-Werte auf den Canvas
+                const xScale = getScale(tire.x, width/2);
+                //const yScale = getScale(tire.y, height/2);
+                
+                // Graph zeichnen
+                ctx.beginPath();
+                ctx.moveTo(tire.x[0] * xScale, tire.y[0] * yScale);
+                for (let i = 1; i < tire.x.length; i++) {
+                    ctx.lineTo(tire.x[i] * xScale, tire.y[i] * yScale);
+                }
+                ctx.strokeStyle = color;
+                ctx.lineWidth = lineWidth;
+                ctx.stroke();
+            }
+
+            function handleDrawClick() {
+                const B = parseFloat(document.getElementById('inputB').value);
+                const C = parseFloat(document.getElementById('inputC').value);
+                const E = parseFloat(document.getElementById('inputE').value);
+                const mu = parseFloat(document.getElementById('inputMu').value);
+                const Fz = parseFloat(document.getElementById('inputFz').value);
+
+                const tire = createLateralPacejka(mu, Fz, B, C, E);
+                reifenKurven.push(tire);
+
+                // Canvas leeren
+                ctx.clearRect(-canvas.width/2, -canvas.height/2, canvas.width, canvas.height);
+
+                // Achsen neu zeichnen
+                ctx.save();
+                ctx.scale(1, -1);
+                ctx.beginPath();
+                ctx.moveTo(-width / 2, 0);
+                ctx.lineTo(width / 2, 0); // x-Achse
+                ctx.moveTo(0, height / 2);
+                ctx.lineTo(0, -height / 2); // y-Achse
+                ctx.strokeStyle = "#555";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+
+                const xScale = getScale(tire.x, width / 2);
+
+                const farben = ["red", "green", "blue", "orange", "purple", "cyan"];
+
+                for (let i = 0; i < reifenKurven.length; i++) {
+                    const color = farben[i % farben.length];
+
+                    drawTire(reifenKurven[i], {
+                        color: color,
+                        lineWidth: 2
+                    });
+                }
+
+                drawGridAndAxes(ctx, width, height, xScale, yScale, yMax);
+            }
+
+            function drawGridAndAxes(ctx, width, height, xScale, yScale, yMax) {
+                const gridStepY = 500;       // y-Achse in N
+                const angleMaxDeg = 14;      // ±15°
+                const angleStepDeg = 2;      // x-Achse Schritt in °
+                const fontSize = 12;
+
+                ctx.save(); 
+                ctx.strokeStyle = "#ddd";
+                ctx.lineWidth = 1;
+                ctx.font = `${fontSize}px sans-serif`;
+                ctx.fillStyle = "#000";
+
+                // === Horizontale Gitterlinien & y-Beschriftung ===
+                for (let y = -yMax; y <= yMax; y += gridStepY) {
+                    const yPos = y * yScale;
+
+                    // Linie
+                    ctx.beginPath();
+                    ctx.moveTo(-width / 2, yPos);
+                    ctx.lineTo(width / 2, yPos);
+                    ctx.stroke();
+
+                    // Text (nicht invertiert!)
+                    ctx.save();
+                    ctx.setTransform(1, 0, 0, 1, canvas.width / 2, canvas.height / 2);
+                    ctx.fillText(`${y} N`, -width / 2 - 45, -yPos + fontSize / 2);
+                    ctx.restore();
+                }
+
+                // === Vertikale Gitterlinien & x-Beschriftung ===
+                for (let deg = -angleMaxDeg; deg <= angleMaxDeg; deg += angleStepDeg) {
+                    const rad = deg * Math.PI / 180;
+                    const xPos = rad * xScale;
+
+                    // Vertikale Linie
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, -height / 2);
+                    ctx.lineTo(xPos, height / 2);
+                    ctx.strokeStyle = "#eee";
+                    ctx.stroke();
+
+                    // Tick-Mark (kleiner Strich an Achse)
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, -5);
+                    ctx.lineTo(xPos, 5);
+                    ctx.strokeStyle = "#aaa";
+                    ctx.stroke();
+
+                    // Text
+                    ctx.save();
+                    ctx.setTransform(1, 0, 0, 1, canvas.width / 2, canvas.height / 2);
+                    ctx.fillText(`${deg}°`, xPos - 10, fontSize + 20);
+                    ctx.restore();
+                }
+
+                // === Hauptachsen zeichnen ===
+                ctx.beginPath();
+                ctx.moveTo(-width / 2, 0); // x-Achse
+                ctx.lineTo(width / 2, 0);
+                ctx.moveTo(0, -height / 2); // y-Achse
+                ctx.lineTo(0, height / 2);
+                ctx.strokeStyle = "#555";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+        </script>
+    </body>
+</html>
